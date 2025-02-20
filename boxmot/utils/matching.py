@@ -6,6 +6,7 @@ import scipy
 import torch
 from scipy.spatial.distance import cdist
 from boxmot.utils.iou import AssociationFunction
+from cython_bbox import bbox_overlaps as bbox_ious
 
 
 """
@@ -85,8 +86,8 @@ def ious(atlbrs, btlbrs):
         return ious
 
     ious = bbox_ious(
-        np.ascontiguousarray(atlbrs, dtype=np.float32),
-        np.ascontiguousarray(btlbrs, dtype=np.float32),
+        np.ascontiguousarray(atlbrs, dtype=float),
+        np.ascontiguousarray(btlbrs, dtype=float),
     )
 
     return ious
@@ -145,6 +146,37 @@ def iou_distance(atracks, btracks):
 
     return cost_matrix
 
+def expand(tlbr, e):
+    
+    t,l,b,r = tlbr
+    w = r-l
+    h = b-t
+    expand_w = 2*w*e + w
+    expand_h = 2*h*e + h
+
+    new_tlbr = [t-expand_h//2,l-expand_w//2,b+expand_h//2,r+expand_w//2]
+
+    return new_tlbr
+
+def tlbr_iou_distance(atracks, btracks):
+    """
+    Compute cost based on IoU
+    :type atracks: list[STrack]
+    :type btracks: list[STrack]
+
+    :rtype cost_matrix np.ndarray
+    """
+
+    if (len(atracks)>0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
+        atlbrs = atracks
+        btlbrs = btracks
+    else:
+        atlbrs = [track.tlbr for track in atracks]
+        btlbrs = [track.tlbr for track in btracks]
+    _ious = ious(atlbrs, btlbrs)
+    cost_matrix = 1 - _ious
+
+    return cost_matrix
 
 def v_iou_distance(atracks, btracks):
     """
@@ -334,6 +366,68 @@ def _nn_cosine_distance(x, y):
     distances = distances
     return distances.min(axis=0)
 
+
+def eious(atlbrs, btlbrs, e):
+    """
+    Compute cost based on EIoU
+    :type atlbrs: list[tlbr] | np.ndarray
+    :type atlbrs: list[tlbr] | np.ndarray
+
+    :rtype ious np.ndarray
+    """
+    eious = np.zeros((len(atlbrs), len(btlbrs)), dtype=float)
+    if eious.size == 0:
+        return eious
+
+    atlbrs = np.array([expand(tlbr, e) for tlbr in atlbrs])
+    btlbrs = np.array([expand(tlbr, e) for tlbr in btlbrs])
+
+    eious = bbox_ious(
+        np.ascontiguousarray(atlbrs, dtype=float),
+        np.ascontiguousarray(btlbrs, dtype=float)
+    )
+
+    return eious
+
+def tlbr_eiou_distance(atracks, btracks, expand):
+    """
+    Compute cost based on IoU
+    :type atracks: list[STrack]
+    :type btracks: list[STrack]
+
+    :rtype cost_matrix np.ndarray
+    """
+
+    if (len(atracks)>0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
+        atlbrs = atracks
+        btlbrs = btracks
+    else:
+        atlbrs = [track.tlbr for track in atracks]
+        btlbrs = [track.tlbr for track in btracks]
+    _ious = eious(atlbrs, btlbrs, expand)
+    cost_matrix = 1 - _ious
+
+    return cost_matrix
+
+def eiou_distance(atracks, btracks, expand):
+    """
+    Compute cost based on IoU
+    :type atracks: list[STrack]
+    :type btracks: list[STrack]
+
+    :rtype cost_matrix np.ndarray
+    """
+
+    if (len(atracks)>0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
+        atlbrs = atracks
+        btlbrs = btracks
+    else:
+        atlbrs = [track.last_tlbr for track in atracks]
+        btlbrs = [track.last_tlbr for track in btracks]
+    _ious = eious(atlbrs, btlbrs, expand)
+    cost_matrix = 1 - _ious
+
+    return cost_matrix
 
 class NearestNeighborDistanceMetric(object):
     """
