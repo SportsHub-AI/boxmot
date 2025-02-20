@@ -1,6 +1,7 @@
 import numpy as np
 from collections import deque
 
+import torch
 from boxmot.utils import matching
 from boxmot.trackers.bytetrack.basetrack import BaseTrack, TrackState
 from boxmot.motion.kalman_filters.aabb.xywh_kf import KalmanFilterXYWH
@@ -212,7 +213,7 @@ class STrack(BaseTrack):
 
 
 class Deep_EIoU(object):
-    def __init__(self, with_reid=False, reid_weights=None, device='cuda', frame_rate=30):
+    def __init__(self, with_reid=False, reid_weights=None, device='cuda:0', frame_rate=30):
 
         self.tracked_stracks = []  # type: list[STrack]
         self.lost_stracks = []  # type: list[STrack]
@@ -232,6 +233,7 @@ class Deep_EIoU(object):
             self.reid_model = ReidAutoBackend(
                     weights=reid_weights, device=device
                 ).model
+            
 
         self.buffer_size = int(frame_rate / 30.0 * self.track_buffer)
         self.max_time_lost = self.buffer_size
@@ -241,7 +243,7 @@ class Deep_EIoU(object):
         self.proximity_thresh = 0.5
         self.appearance_thresh = 0.25
 
-    def update(self, output_results, embedding):
+    def update(self, output_results, img):
         
         '''
         output_results : [x1,y1,x2,y2,score] type:ndarray
@@ -276,6 +278,7 @@ class Deep_EIoU(object):
             scores_keep = scores[remain_inds]
             
             if self.with_reid:
+                embedding = self.reid_model.get_features(bboxes.cpu().numpy(), img)
                 embedding = embedding[lowest_inds]
                 features_keep = embedding[remain_inds]
 
