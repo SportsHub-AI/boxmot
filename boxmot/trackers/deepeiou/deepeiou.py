@@ -6,7 +6,7 @@ from boxmot.utils import matching
 from boxmot.trackers.bytetrack.basetrack import BaseTrack, TrackState
 from boxmot.motion.kalman_filters.aabb.xywh_kf import KalmanFilterXYWH
 from boxmot.appearance.reid_auto_backend import ReidAutoBackend
-from boxmot.trackers.deepeiou.visualize import plot_tracking
+# from boxmot.trackers.deepeiou.visualize import plot_tracking
 
 from collections import defaultdict
 
@@ -155,7 +155,7 @@ class STrack(BaseTrack):
         """Convert bounding box to format `(min x, min y, max x, max y)`, i.e.,
         `(top left, bottom right)`.
         """
-        ret = self.tlwh.copy()
+        ret = self.last_tlwh.copy()
         ret[2:] += ret[:2]
         return ret
     
@@ -279,8 +279,8 @@ class Deep_EIoU(object):
             
             if self.with_reid:
                 embedding = self.reid_model.get_features(bboxes.cpu().numpy(), img)
-                embedding = embedding[lowest_inds]
-                features_keep = embedding[remain_inds]
+                embedding = embedding[lowest_inds.numpy()]
+                features_keep = embedding[remain_inds.numpy()]
 
         else:
             bboxes = []
@@ -351,7 +351,7 @@ class Deep_EIoU(object):
         if len(scores):
             inds_high = scores < self.track_high_thresh
             inds_low = scores > self.track_low_thresh
-            inds_second = np.logical_and(inds_low, inds_high)
+            inds_second = np.logical_and(inds_low.numpy(), inds_high.numpy())
             dets_second = bboxes[inds_second]
             scores_second = scores[inds_second]
             if self.with_reid:
@@ -442,23 +442,23 @@ class Deep_EIoU(object):
 
         return output_stracks
 
-    def plot_results(self, frame):
-        # Plot results and display
-        online_targets = [track for track in self.tracked_stracks]
-        online_tlwhs = []
-        online_ids = []
-        online_scores = []
-        for t in online_targets:
-            tlwh = t.last_tlwh
-            tid = t.track_id
-            if tlwh[2] * tlwh[3] > 10:
-                online_tlwhs.append(tlwh)
-                online_ids.append(tid)
-                online_scores.append(t.score)
-        online_im = plot_tracking(
-                        frame, online_tlwhs, online_ids, frame_id=1, fps=30
-                    )
-        return online_im
+    # def plot_results(self, frame):
+    #     # Plot results and display
+    #     online_targets = [track for track in self.tracked_stracks]
+    #     online_tlwhs = []
+    #     online_ids = []
+    #     online_scores = []
+    #     for t in online_targets:
+    #         tlwh = t.last_tlwh
+    #         tid = t.track_id
+    #         if tlwh[2] * tlwh[3] > 10:
+    #             online_tlwhs.append(tlwh)
+    #             online_ids.append(tid)
+    #             online_scores.append(t.score)
+    #     online_im = plot_tracking(
+    #                     frame, online_tlwhs, online_ids, frame_id=1, fps=30
+    #                 )
+    #     return online_im
     
 
 
