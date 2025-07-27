@@ -24,8 +24,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ['3.11']
-        tracker: ["ocsort", "bytetrack", "botsort", "hybridsort", "deepocsort", "imprassoc", "strongsort"]
+        python-version: ['3.12']
+        tracker: ["ocsort", "bytetrack", "botsort", "deepocsort", "strongsort", "boosttrack"]
     timeout-minutes: 50
 
     steps:
@@ -41,56 +41,34 @@ jobs:
         run: |
           sudo apt-get install -y jq curl
 
-          if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS
-            sed -i '' 's/source="torch_cuda121"/source="torchcpu"/g' pyproject.toml
-          elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            # Linux
-            sed -i 's/source="torch_cuda121"/source="torchcpu"/g' pyproject.toml
-          fi
-          
-          python -m pip install --upgrade pip setuptools wheel poetry
-          poetry config virtualenvs.create false
-          poetry lock
-          poetry install --with yolo
-
-      - name: Download eval tools repo
-        run: |
-          git clone https://github.com/JonathonLuiten/TrackEval.git tracking/val_utils
+          python -m pip install --upgrade pip setuptools wheel uv
+          sed -i'' -e 's/index = "torch-gpu"/index = "torch-cpu"/g' pyproject.toml
+          uv sync --group yolo
 
       # Restore the cached dataset (if available)
       - name: Restore MOT17 dataset cache
         uses: actions/cache@v4
         with:
           # Specify the path where the dataset is stored
-          path: tracking/val_utils/MOT17-50.zip
+          path: boxmot/engine/trackeval/MOT17-ablation.zip
           # Create a cache key, you can use a fixed key if the dataset is static
-          key: mot17-50-dataset-cache-v3
-
-      - name: Download eval data
-        run: |
-          wget https://github.com/mikel-brostrom/boxmot/releases/download/v10.0.83/runs.zip -O runs.zip
-          wget https://github.com/mikel-brostrom/boxmot/releases/download/v10.0.83/MOT17-50.zip -O tracking/val_utils/MOT17-50.zip
-          unzip runs.zip -d ./
-          mkdir -p tracking/val_utils/data
-          unzip tracking/val_utils/MOT17-50.zip -d ./tracking/val_utils/data/
+          key: mot17-ablation-dataset-cache-v3
 
       # Cache data for future runs (only if the cache was not already restored)
       - name: Cache MOT17.zip if not already cached
         if: steps.cache-restore.outputs.cache-hit != 'true'  # Only run if the cache was not hit
         uses: actions/cache@v4
         with:
-          path: tracking/val_utils/MOT17-50.zip
-          key: mot17-50-dataset-cache-v3
+          path: boxmot/engine/TracEval/MOT17-ablation.zip
+          key: mot17-ablation-dataset-cache-v3
 
       - name: Evaluation and Summarize Results
         run: |
+          ls boxmot/engine/trackeval/data
 
-          pwd
-          ls tracking/val_utils
-          ls tracking/val_utils/data
+          source .venv/bin/activate
 
-          if python3 tracking/val.py --imgsz 320 --classes 0 --yolo-model yolov8x.pt --reid-model osnet_x1_0_dukemtmcreid.pt --tracking-method ${{ matrix.tracker }} --verbose --source ./tracking/val_utils/data/MOT17-50/train; then
+          if boxmot eval --classes 0 --yolo-model yolox_x_ablation.pt --reid-model lmbn_n_duke.pt --tracking-method ${{ matrix.tracker }} --ci --verbose --source boxmot/engine/TrackEval/data/MOT17-ablation/train; then
             STATUS="✅"
           else
             STATUS="❌"
@@ -108,7 +86,25 @@ jobs:
 
           mkdir results
           TRACKER_NAME=$(echo "${{ matrix.tracker }}" | awk '{print tolower($0)}')
-          echo "$TRACKER_NAME,$STATUS,$HOTA,$MOTA,$IDF1" > results/${{ matrix.tracker }}.txt
+
+          if [ "$STATUS" == "❌" ]; then
+            fps=""
+          else
+            # Define static FPS values per tracker
+            declare -A tracker_fps
+            tracker_fps["deepocsort"]=12
+            tracker_fps["bytetrack"]=1265
+            tracker_fps["ocsort"]=1483
+            tracker_fps["strongsort"]=17
+            tracker_fps["botsort"]=46
+            tracker_fps["hybridsort"]=25
+            tracker_fps["boosttrack"]=25
+
+            # Retrieve the static FPS value for the current tracker
+            fps=${tracker_fps[$TRACKER_NAME]}
+          fi
+
+          echo "$TRACKER_NAME,$STATUS,$HOTA,$MOTA,$IDF1,$fps" > results/${{ matrix.tracker }}.txt
         
       - name: Show Results
         run: cat results/${{ matrix.tracker }}.txt
@@ -170,18 +166,17 @@ jobs:
 
           # Define paper names and their corresponding URLs
           declare -A paper_links
+          paper_links["boosttrack"]="https://arxiv.org/abs/2408.13003"
           paper_links["deepocsort"]="https://arxiv.org/abs/2302.11813"
           paper_links["bytetrack"]="https://arxiv.org/abs/2110.06864"
           paper_links["ocsort"]="https://arxiv.org/abs/2203.14360"
           paper_links["strongsort"]="https://arxiv.org/abs/2202.13514"
           paper_links["botsort"]="https://arxiv.org/abs/2206.14651"
           paper_links["hybridsort"]="https://arxiv.org/abs/2308.00783"
-          paper_links["imprassoc"]="https://openaccess.thecvf.com/content/CVPR2023W/E2EAD/papers/Stadler_An_Improved_Association_Pipeline_for_Multi-Person_Tracking_CVPRW_2023_paper.pdf"
-
 
           # Create the markdown table header
-          new_table="| Tracker | Status  | HOTA↑ | MOTA↑ | IDF1↑ |\n"
-          new_table+="| :-----: | :-----: | :---: | :---: | :---: |\n"
+          new_table="| Tracker | Status  | HOTA↑ | MOTA↑ | IDF1↑ | FPS |\n"
+          new_table+="| :-----: | :-----: | :---: | :---: | :---: | :---: |\n"
 
           # Append the contents of pretty_results.txt to the table
           while read -r line; do
@@ -190,14 +185,15 @@ jobs:
               hota=$(echo "$line" | awk '{print $3}')
               mota=$(echo "$line" | awk '{print $4}')
               idf1=$(echo "$line" | awk '{print $5}')
-              
+              fps=$(echo "$line" | awk '{print $6}')
+
               # Retrieve the paper URL for the tracker
               paper_url=${paper_links[$tracker]}
               
               # Create a markdown hyperlink for the tracker name
               tracker_link="[$tracker]($paper_url)"
               
-              new_table+="| $tracker_link | $status | $hota | $mota | $idf1 |\n"
+              new_table+="| $tracker_link | $status | $hota | $mota | $idf1 | $fps |\n"
           done < "$RESULTS_FILE"
 
           # Define unique markers to locate the table

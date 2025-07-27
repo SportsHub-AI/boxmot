@@ -1,13 +1,14 @@
 import torch
-import onnx
+
 from boxmot.appearance.exporters.base_exporter import BaseExporter
 from boxmot.utils import logger as LOGGER
 
 
 class ONNXExporter(BaseExporter):
-    required_packages = ("onnx>=1.16.1",)
-    
+    group = "onnx"
+
     def export(self):
+        import onnx
 
         f = self.file.with_suffix(".onnx")
 
@@ -31,11 +32,12 @@ class ONNXExporter(BaseExporter):
 
         if self.simplify:
             self.simplify_model(model_onnx, f)
-            
+
         return f
 
-
     def simplify_model(self, model_onnx, f):
+        import onnx
+
         try:
             cuda = torch.cuda.is_available()
             self.checker.check_packages(
@@ -46,9 +48,7 @@ class ONNXExporter(BaseExporter):
             )
             import onnxsim
 
-            LOGGER.info(
-                f"Simplifying with onnx-simplifier {onnxsim.__version__}..."
-            )
+            LOGGER.info(f"Simplifying with onnx-simplifier {onnxsim.__version__}...")
             model_onnx, check = onnxsim.simplify(model_onnx)
             assert check, "assert check failed"
             onnx.save(model_onnx, f)

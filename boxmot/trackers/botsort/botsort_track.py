@@ -1,8 +1,9 @@
-import numpy as np
 from collections import deque
 
-from boxmot.trackers.botsort.basetrack import BaseTrack, TrackState
+import numpy as np
+
 from boxmot.motion.kalman_filters.aabb.xywh_kf import KalmanFilterXYWH
+from boxmot.trackers.botsort.basetrack import BaseTrack, TrackState
 from boxmot.utils.ops import xywh2xyxy, xyxy2xywh
 
 
@@ -67,7 +68,9 @@ class STrack(BaseTrack):
         mean_state = self.mean.copy()
         if self.state != TrackState.Tracked:
             mean_state[6:8] = 0  # Reset velocities
-        self.mean, self.covariance = self.kalman_filter.predict(mean_state, self.covariance)
+        self.mean, self.covariance = self.kalman_filter.predict(
+            mean_state, self.covariance
+        )
 
     @staticmethod
     def multi_predict(stracks):
@@ -79,7 +82,9 @@ class STrack(BaseTrack):
         for i, st in enumerate(stracks):
             if st.state != TrackState.Tracked:
                 multi_mean[i][6:8] = 0  # Reset velocities
-        multi_mean, multi_covariance = STrack.shared_kalman.multi_predict(multi_mean, multi_covariance)
+        multi_mean, multi_covariance = STrack.shared_kalman.multi_predict(
+            multi_mean, multi_covariance
+        )
         for st, mean, cov in zip(stracks, multi_mean, multi_covariance):
             st.mean, st.covariance = mean, cov
 
@@ -112,7 +117,9 @@ class STrack(BaseTrack):
 
     def re_activate(self, new_track, frame_id, new_id=False):
         """Re-activate a track with a new detection."""
-        self.mean, self.covariance = self.kalman_filter.update(self.mean, self.covariance, new_track.xywh)
+        self.mean, self.covariance = self.kalman_filter.update(
+            self.mean, self.covariance, new_track.xywh
+        )
         if new_track.curr_feat is not None:
             self.update_features(new_track.curr_feat)
         self.tracklet_len = 0
@@ -132,7 +139,9 @@ class STrack(BaseTrack):
         self.tracklet_len += 1
         self.history_observations.append(self.xyxy)
 
-        self.mean, self.covariance = self.kalman_filter.update(self.mean, self.covariance, new_track.xywh)
+        self.mean, self.covariance = self.kalman_filter.update(
+            self.mean, self.covariance, new_track.xywh
+        )
         if new_track.curr_feat is not None:
             self.update_features(new_track.curr_feat)
 

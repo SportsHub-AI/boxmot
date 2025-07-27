@@ -1,13 +1,14 @@
 # Mikel Broström 🔥 Yolo Tracking 🧾 AGPL-3.0 license
 
-import numpy as np
 from collections import deque
 
+import numpy as np
+
 from boxmot.motion.kalman_filters.aabb.xyah_kf import KalmanFilterXYAH
+from boxmot.trackers.basetracker import BaseTracker
 from boxmot.trackers.bytetrack.basetrack import BaseTrack, TrackState
 from boxmot.utils.matching import fuse_score, iou_distance, linear_assignment
 from boxmot.utils.ops import tlwh2xyah, xywh2tlwh, xywh2xyxy, xyxy2xywh
-from boxmot.trackers.basetracker import BaseTracker
 
 
 class STrack(BaseTrack):
@@ -21,7 +22,7 @@ class STrack(BaseTrack):
         self.conf = det[4]
         self.cls = det[5]
         self.det_ind = det[6]
-        self.max_obs=max_obs
+        self.max_obs = max_obs
         self.kalman_filter = None
         self.mean, self.covariance = None, None
         self.is_activated = False
@@ -120,14 +121,17 @@ class ByteTrack(BaseTracker):
     BYTETracker: A tracking algorithm based on ByteTrack, which utilizes motion-based tracking.
 
     Args:
+        min_conf (float, optional): Threshold for detection confidence. Detections below this threshold are discarded.
         track_thresh (float, optional): Threshold for detection confidence. Detections above this threshold are considered for tracking in the first association round.
         match_thresh (float, optional): Threshold for the matching step in data association. Controls the maximum distance allowed between tracklets and detections for a match.
         track_buffer (int, optional): Number of frames to keep a track alive after it was last detected. A longer buffer allows for more robust tracking but may increase identity switches.
         frame_rate (int, optional): Frame rate of the video being processed. Used to scale the track buffer size.
         per_class (bool, optional): Whether to perform per-class tracking. If True, tracks are maintained separately for each object class.
     """
+
     def __init__(
         self,
+        min_conf: float = 0.1,
         track_thresh: float = 0.45,
         match_thresh: float = 0.8,
         track_buffer: int = 25,
@@ -143,6 +147,7 @@ class ByteTrack(BaseTracker):
         self.track_buffer = track_buffer
 
         self.per_class = per_class
+        self.min_conf = min_conf
         self.track_thresh = track_thresh
         self.match_thresh = match_thresh
         self.det_thresh = track_thresh
@@ -152,8 +157,10 @@ class ByteTrack(BaseTracker):
 
     @BaseTracker.setup_decorator
     @BaseTracker.per_class_decorator
-    def update(self, dets: np.ndarray, img: np.ndarray = None, embs: np.ndarray = None) -> np.ndarray:
-        
+    def update(
+        self, dets: np.ndarray, img: np.ndarray = None, embs: np.ndarray = None
+    ) -> np.ndarray:
+
         self.check_inputs(dets, img)
 
         dets = np.hstack([dets, np.arange(len(dets)).reshape(-1, 1)])
@@ -166,7 +173,7 @@ class ByteTrack(BaseTracker):
 
         remain_inds = confs > self.track_thresh
 
-        inds_low = confs > 0.1
+        inds_low = confs > self.min_conf
         inds_high = confs < self.track_thresh
         inds_second = np.logical_and(inds_low, inds_high)
 
@@ -175,9 +182,7 @@ class ByteTrack(BaseTracker):
 
         if len(dets) > 0:
             """Detections"""
-            detections = [
-                STrack(det, max_obs=self.max_obs) for det in dets
-            ]
+            detections = [STrack(det, max_obs=self.max_obs) for det in dets]
         else:
             detections = []
 
@@ -215,7 +220,9 @@ class ByteTrack(BaseTracker):
         # association the untrack to the low conf detections
         if len(dets_second) > 0:
             """Detections"""
-            detections_second = [STrack(det_second, max_obs=self.max_obs) for det_second in dets_second]
+            detections_second = [
+                STrack(det_second, max_obs=self.max_obs) for det_second in dets_second
+            ]
         else:
             detections_second = []
         r_tracked_stracks = [

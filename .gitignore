@@ -7,6 +7,7 @@ env/
 htmlcov/
 # interpreter bytecode
 __pycache__/
+__MACOSX/
 
 # experiment results
 runs/
@@ -54,3 +55,6 @@ dist/
 
 # cmc debug images
 boxmot/motion/cmc/*.jpg
+
+# json outputs
+*_output.json

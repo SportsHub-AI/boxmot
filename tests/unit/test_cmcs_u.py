@@ -1,11 +1,10 @@
-import cv2
 import numpy as np
 import pytest
+
 from boxmot.motion.cmc.ecc import ECC
 from boxmot.motion.cmc.orb import ORB
 from boxmot.motion.cmc.sift import SIFT
 from boxmot.motion.cmc.sof import SOF
-
 
 
 # Fixture for creating CMC objects
@@ -31,10 +30,10 @@ def test_cmc_apply(cmc_object):
 @pytest.mark.parametrize("cmc_object", [ECC, ORB, SIFT, SOF], indirect=True)
 def test_cmc_preprocess(cmc_object):
     # Create a dummy image
-    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
     processed_img = cmc_object.preprocess(img)
     # Assert the shape of the processed image, scale is 0.1 by default
-    assert processed_img.shape == (10, 10)
+    assert processed_img.shape == (30, 30)
 
 
 # Test apply function with empty detections

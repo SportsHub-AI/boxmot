@@ -1,6 +1,7 @@
 # Mikel Broström 🔥 Yolo Tracking 🧾 AGPL-3.0 license
 
 import os
+
 import numpy as np
 
 from boxmot.motion.kalman_filters.aabb.xyah_kf import KalmanFilterXYAH
@@ -87,7 +88,14 @@ class Track:
         self.ema_alpha = ema_alpha
 
         # start with confirmed in Ci as test expect equal amount of outputs as inputs
-        self.state = TrackState.Confirmed if (os.getenv('GITHUB_ACTIONS') == 'true' and os.getenv('GITHUB_JOB') != 'mot-metrics-benchmark') else TrackState.Tentative
+        self.state = (
+            TrackState.Confirmed
+            if (
+                os.getenv("GITHUB_ACTIONS") == "true"
+                and os.getenv("GITHUB_JOB") != "mot-metrics-benchmark"
+            )
+            else TrackState.Tentative
+        )
         self.features = []
         if detection.feat is not None:
             detection.feat /= np.linalg.norm(detection.feat)

@@ -1,9 +1,11 @@
-import torch
-import numpy as np
-from pathlib import Path
 from collections import OrderedDict, namedtuple
-from boxmot.utils import logger as LOGGER
+
+import numpy as np
+import torch
+
 from boxmot.appearance.backends.base_backend import BaseModelBackend
+from boxmot.utils import logger as LOGGER
+
 
 class TensorRTBackend(BaseModelBackend):
     def __init__(self, weights, device, half):
@@ -36,7 +38,7 @@ class TensorRTBackend(BaseModelBackend):
         # Deserialize the engine
         with open(w, "rb") as f, trt.Runtime(logger) as runtime:
             self.model_ = runtime.deserialize_cuda_engine(f.read())
-        
+
         # Execution context
         self.context = self.model_.create_execution_context()
         self.bindings = OrderedDict()
@@ -91,12 +93,12 @@ class TensorRTBackend(BaseModelBackend):
             inp_batch = temp_im_batch.shape[0]
         if temp_im_batch.shape[0] > 0:
             batch_array.append(temp_im_batch)
-        
+
         for temp_batch in batch_array:
             # Adjust for dynamic shapes
             if temp_batch.shape != self.bindings["images"].shape:
                 if self.is_trt10:
-                    
+
                     self.context.set_input_shape("images", temp_batch.shape)
                     self.bindings["images"] = self.bindings["images"]._replace(shape=temp_batch.shape)
                     self.bindings["output"].data.resize_(tuple(self.context.get_tensor_shape("output")))
@@ -118,9 +120,9 @@ class TensorRTBackend(BaseModelBackend):
             features = self.bindings["output"].data
             resultant_features.append(features.clone())
 
-        if len(resultant_features)== 1:
+        if len(resultant_features) == 1:
             return resultant_features[0]
         else:
-            rslt_features = torch.cat(resultant_features,dim=0)
-            rslt_features= rslt_features[:im_batch.shape[0]]
+            rslt_features = torch.cat(resultant_features, dim=0)
+            rslt_features = rslt_features[: im_batch.shape[0]]
             return rslt_features

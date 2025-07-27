@@ -1,5 +1,7 @@
 from collections import OrderedDict
+
 import numpy as np
+
 
 class TrackState:
     """
@@ -12,6 +14,7 @@ class TrackState:
         LongLost (int): Represents a track that has been lost for a long time.
         Removed (int): Represents a track that has been removed.
     """
+
     New = 0
     Tracked = 1
     Lost = 2
@@ -37,6 +40,7 @@ class BaseTrack:
         time_since_update (int): The number of frames since the track was last updated.
         location (tuple): The location of the object in multi-camera tracking (set to infinity by default).
     """
+
     _count = 0
 
     track_id: int = 0

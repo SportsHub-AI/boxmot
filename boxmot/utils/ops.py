@@ -1,9 +1,10 @@
 # Mikel Broström 🔥 Yolo Tracking 🧾 AGPL-3.0 license
 
+from typing import Tuple, Union
+
+import cv2
 import numpy as np
 import torch
-import cv2
-from typing import Tuple, Union
 
 
 def xyxy2xywh(x):
@@ -113,12 +114,12 @@ def xyxy2xysr(x):
     """
     x = x[0:4]
     y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
-    w = y[..., 2] - y[..., 0]  # width
-    h = y[..., 3] - y[..., 1]  # height
-    y[..., 0] = y[..., 0] + w / 2.0            # x center
-    y[..., 1] = y[..., 1] + h / 2.0            # y center
-    y[..., 2] = w * h                                  # scale (area)
-    y[..., 3] = w / (h + 1e-6)                         # aspect ratio
+    w = y[..., 2] - y[..., 0]        # width
+    h = y[..., 3] - y[..., 1]        # height
+    y[..., 0] = y[..., 0] + w / 2.0  # x center
+    y[..., 1] = y[..., 1] + h / 2.0  # y center
+    y[..., 2] = w * h                # scale (area)
+    y[..., 3] = w / (h + 1e-6)       # aspect ratio
     y = y.reshape((4, 1))
     return y
 
@@ -129,14 +130,14 @@ def letterbox(
     color: Tuple[int, int, int] = (114, 114, 114),
     auto: bool = True,
     scaleFill: bool = False,
-    scaleup: bool = True
+    scaleup: bool = True,
 ) -> Tuple[np.ndarray, Tuple[float, float], Tuple[float, float]]:
     """
     Resizes an image to a new shape while maintaining aspect ratio, padding with color if needed.
 
     Args:
         img (np.ndarray): The original image in BGR format.
-        new_shape (Union[int, Tuple[int, int]], optional): Desired size as an integer (e.g., 640) 
+        new_shape (Union[int, Tuple[int, int]], optional): Desired size as an integer (e.g., 640)
             or tuple (width, height). Default is (640, 640).
         color (Tuple[int, int, int], optional): Padding color in BGR format. Default is (114, 114, 114).
         auto (bool, optional): If True, adjusts padding to be a multiple of 32. Default is True.
@@ -183,36 +184,8 @@ def letterbox(
     # Add border to the image
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-    img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
+    img = cv2.copyMakeBorder(
+        img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color
+    )
 
     return img, ratio, (dw, dh)
-
-
-# This preprocess differs from the current version of YOLOX preprocess, but ByteTrack uses it
-# https://github.com/ifzhang/ByteTrack/blob/d1bf0191adff59bc8fcfeaa0b33d3d1642552a99/yolox/data/data_augment.py#L189
-def yolox_preprocess(image, input_size, 
-                         mean=(0.485, 0.456, 0.406), 
-                         std=(0.229, 0.224, 0.225), 
-                         swap=(2, 0, 1)):
-    if len(image.shape) == 3:
-        padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
-    else:
-        padded_img = np.ones(input_size) * 114.0
-    img = np.array(image)
-    r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
-    resized_img = cv2.resize(
-        img,
-        (int(img.shape[1] * r), int(img.shape[0] * r)),
-        interpolation=cv2.INTER_LINEAR,
-    ).astype(np.float32)
-    padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
-
-    padded_img = padded_img[:, :, ::-1]
-    padded_img /= 255.0
-    if mean is not None:
-        padded_img -= mean
-    if std is not None:
-        padded_img /= std
-    padded_img = padded_img.transpose(swap)
-    padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
-    return padded_img, r

@@ -1,16 +1,17 @@
 # Mikel Broström 🔥 Yolo Tracking 🧾 AGPL-3.0 license
 
-import numpy as np
-from torch import device
 from pathlib import Path
 
-from boxmot.appearance.reid_auto_backend import ReidAutoBackend
+import numpy as np
+from torch import device
+
+from boxmot.appearance.reid.auto_backend import ReidAutoBackend
 from boxmot.motion.cmc import get_cmc_method
+from boxmot.trackers.basetracker import BaseTracker
 from boxmot.trackers.strongsort.sort.detection import Detection
 from boxmot.trackers.strongsort.sort.tracker import Tracker
-from boxmot.utils.matching import NearestNeighborDistanceMetric
+from boxmot.trackers.strongsort.sort.linear_assignment import NearestNeighborDistanceMetric
 from boxmot.utils.ops import xyxy2tlwh
-from boxmot.trackers.basetracker import BaseTracker
 
 
 class StrongSort(object):
@@ -30,12 +31,14 @@ class StrongSort(object):
         mc_lambda (float, optional): Weight for motion consistency in the track state estimation. Higher values give more weight to motion information.
         ema_alpha (float, optional): Alpha value for exponential moving average (EMA) update of appearance features. Controls the contribution of new and old embeddings in the ReID model.
     """
+
     def __init__(
         self,
         reid_weights: Path,
         device: device,
         half: bool,
         per_class: bool = False,
+        min_conf: float = 0.1,
         max_cos_dist=0.2,
         max_iou_dist=0.7,
         max_age=30,
@@ -46,6 +49,7 @@ class StrongSort(object):
     ):
 
         self.per_class = per_class
+        self.min_conf = min_conf
         self.model = ReidAutoBackend(
             weights=reid_weights, device=device, half=half
         ).model
@@ -58,10 +62,12 @@ class StrongSort(object):
             mc_lambda=mc_lambda,
             ema_alpha=ema_alpha,
         )
-        self.cmc = get_cmc_method('ecc')()
+        self.cmc = get_cmc_method("ecc")()
 
     @BaseTracker.per_class_decorator
-    def update(self, dets: np.ndarray, img: np.ndarray, embs: np.ndarray = None) -> np.ndarray:
+    def update(
+        self, dets: np.ndarray, img: np.ndarray, embs: np.ndarray = None
+    ) -> np.ndarray:
         assert isinstance(
             dets, np.ndarray
         ), f"Unsupported 'dets' input format '{type(dets)}', valid format is np.ndarray"
@@ -74,8 +80,15 @@ class StrongSort(object):
         assert (
             dets.shape[1] == 6
         ), "Unsupported 'dets' 2nd dimension lenght, valid lenghts is 6"
+        if embs is not None:
+            assert (
+                dets.shape[0] == embs.shape[0]
+            ), "Missmatch between detections and embeddings sizes"
 
         dets = np.hstack([dets, np.arange(len(dets)).reshape(-1, 1)])
+        remain_inds = dets[:, 4] >= self.min_conf
+        dets = dets[remain_inds]
+
         xyxy = dets[:, 0:4]
         confs = dets[:, 4]
         clss = dets[:, 5]
@@ -88,15 +101,16 @@ class StrongSort(object):
 
         # extract appearance information for each detection
         if embs is not None:
-            features = embs
+            features = embs[remain_inds]
         else:
             features = self.model.get_features(xyxy, img)
 
         tlwh = xyxy2tlwh(xyxy)
         detections = [
-            Detection(box, conf, cls, det_ind, feat) for
-            box, conf, cls, det_ind, feat in
-            zip(tlwh, confs, clss, det_ind, features)
+            Detection(box, conf, cls, det_ind, feat)
+            for box, conf, cls, det_ind, feat in zip(
+                tlwh, confs, clss, det_ind, features
+            )
         ]
 
         # update tracker
@@ -117,8 +131,13 @@ class StrongSort(object):
             det_ind = track.det_ind
 
             outputs.append(
-                np.concatenate(([x1, y1, x2, y2], [id], [conf], [cls], [det_ind])).reshape(1, -1)
+                np.concatenate(
+                    ([x1, y1, x2, y2], [id], [conf], [cls], [det_ind])
+                ).reshape(1, -1)
             )
         if len(outputs) > 0:
             return np.concatenate(outputs)
         return np.array([])
+
+    def reset(self):
+        pass
